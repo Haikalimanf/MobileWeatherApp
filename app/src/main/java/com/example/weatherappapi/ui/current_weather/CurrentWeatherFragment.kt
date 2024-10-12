@@ -13,7 +13,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.example.weatherappapi.data.response.WeatherResponse
-import com.example.weatherappapi.data.retrofit.WeatherApiConfig
+import androidx.fragment.app.viewModels
 import com.example.weatherappapi.databinding.FragmentCurrentWeatherBinding
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
@@ -26,6 +26,7 @@ class CurrentWeatherFragment : Fragment() {
     private var _binding: FragmentCurrentWeatherBinding? = null
     private val binding get() = _binding!!
     private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
+    private val viewModel: CurrentWeatherViewModel by viewModels()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -68,9 +69,27 @@ class CurrentWeatherFragment : Fragment() {
                     if (location != null) {
                         val latitude = location.latitude
                         val longitude = location.longitude
-                        fetchWeather(latitude,longitude)
-                        Toast.makeText(requireContext(), "$latitude, $longitude", Toast.LENGTH_SHORT).show()
-                        Log.d("CurrentWeatherFragment", "Location: $latitude, $longitude")
+                        viewModel.fetchWeather(latitude,longitude).enqueue(object : Callback<WeatherResponse> {
+                            override fun onResponse(call: Call<WeatherResponse>, response: Response<WeatherResponse>) {
+                                if (response.isSuccessful) {
+                                    val weatherResponse = response.body()
+                                    weatherResponse?.let {
+                                        binding.tvConditionWeather.text = it.current.condition.text
+                                        binding.tvLocation.text = it.location.name
+                                        binding.tvTemprature.text = "${it.current.feelslikeC}°"
+                                        binding.tvPercentMoisture.text = "${it.current.humidity}%"
+                                        binding.tvWindSpeed.text = "${it.current.windKph} km/h"
+                                        binding.tvPercentRain.text = "${it.current.cloud}%"
+                                    }
+                                } else {
+                                    Log.e("WeatherViewModel", "Error Response: ${response.message()}")
+                                }
+                            }
+
+                            override fun onFailure(call: Call<WeatherResponse>, t: Throwable) {
+                                Log.e("WeatherViewModel", "API Failure: ${t.message}")
+                            }
+                        })
                     } else {
                         Toast.makeText(requireContext(), "Location not found", Toast.LENGTH_SHORT).show()
                         Log.d("CurrentWeatherFragment", "Location not found")
@@ -83,33 +102,6 @@ class CurrentWeatherFragment : Fragment() {
         }
     }
 
-    fun fetchWeather(latitude: Double, longitude: Double) {
-        val apiKey = "3be62c84d2894a49a29151335240710"
-        val locationQuery = "$latitude,$longitude"
-        val client = WeatherApiConfig.getApiService().getWeather(apiKey, locationQuery)
-
-        client.enqueue(object : Callback<WeatherResponse> {
-            override fun onResponse(call: Call<WeatherResponse>, response: Response<WeatherResponse>) {
-                if (response.isSuccessful) {
-                    val weatherResponse = response.body()
-                    weatherResponse?.let {
-                        binding.tvConditionWeather.text = it.current.condition.text
-                        binding.tvLocation.text = it.location.name
-                        binding.tvTemprature.text = "${it.current.feelslikeC}°"
-                        binding.tvPercentMoisture.text = "${it.current.humidity}%"
-                        binding.tvWindSpeed.text = "${it.current.windKph} km/h"
-                        binding.tvPercentRain.text = "${it.current.cloud}%"
-                    }
-                } else {
-                    Log.e("WeatherViewModel", "Error Response: ${response.message()}")
-                }
-            }
-
-            override fun onFailure(call: Call<WeatherResponse>, t: Throwable) {
-                Log.e("WeatherViewModel", "API Failure: ${t.message}")
-            }
-            })
-        }
 
     override fun onRequestPermissionsResult(
         requestCode: Int,

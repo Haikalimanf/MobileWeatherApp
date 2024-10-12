@@ -1,13 +1,16 @@
 package com.example.weatherappapi.ui.current_weather
 
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import com.example.weatherappapi.data.response.WeatherResponse
+import com.example.weatherappapi.data.retrofit.WeatherApiConfig
+import retrofit2.Call
 
 class CurrentWeatherViewModel : ViewModel() {
 
-    private val _text = MutableLiveData<String>().apply {
-        value = "This is home Fragment"
+    fun fetchWeather(latitude: Double, longitude: Double): Call<WeatherResponse> {
+        val apiKey = "3be62c84d2894a49a29151335240710"
+        val locationQuery = "$latitude,$longitude"
+        val client = WeatherApiConfig.getApiService().getWeather(apiKey, locationQuery)
+        return client
     }
-    val text: LiveData<String> = _text
 }
