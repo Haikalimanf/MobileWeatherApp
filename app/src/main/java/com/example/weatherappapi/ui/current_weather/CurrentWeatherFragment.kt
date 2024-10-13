@@ -1,9 +1,13 @@
+// com.example.weatherappapi.ui.current_weather.CurrentWeatherFragment.kt
+
 package com.example.weatherappapi.ui.current_weather
 
 import android.Manifest
 import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -12,21 +16,21 @@ import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
-import com.example.weatherappapi.data.response.WeatherResponse
-import androidx.fragment.app.viewModels
+import androidx.lifecycle.ViewModelProvider
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.example.weatherappapi.data.repository.WeatherRepository
+import com.example.weatherappapi.data.retrofit.WeatherApiConfig
 import com.example.weatherappapi.databinding.FragmentCurrentWeatherBinding
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
 
-class CurrentWeatherFragment : Fragment() {
+class CurrentWeatherFragment : Fragment(), SwipeRefreshLayout.OnRefreshListener {
 
     private var _binding: FragmentCurrentWeatherBinding? = null
     private val binding get() = _binding!!
     private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
-    private val viewModel: CurrentWeatherViewModel by viewModels()
+    private lateinit var viewModel: CurrentWeatherViewModel
+    private lateinit var swipeRefreshLayout: SwipeRefreshLayout
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -40,7 +44,43 @@ class CurrentWeatherFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(requireActivity())
+
+        val repository = WeatherRepository(WeatherApiConfig.apiService)
+        val factory = CurrentWeatherViewModelFactory(repository)
+        viewModel = ViewModelProvider(this, factory).get(CurrentWeatherViewModel::class.java)
+        swipeRefreshLayout = binding.swipeLy
+        swipeRefreshLayout.setOnRefreshListener(this)
+
+        observeViewModel()
+
         checkLocationPermission()
+
+        binding.btnSearch.setOnClickListener {
+            val location = binding.etCity.text.toString().trim()
+            if (location.isNotEmpty()) {
+                viewModel.fetchWeather(location,"")
+            } else {
+                Toast.makeText(requireContext(), "Please enter a city name", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun observeViewModel() {
+        viewModel.weatherData.observe(viewLifecycleOwner) { weatherResponse ->
+            weatherResponse?.let {
+                binding.tvConditionWeather.text = it.current.condition.text
+                binding.tvLocation.text = it.location.name
+                binding.tvTemperature.text = "${it.current.feelslikeC}°"
+                binding.tvPercentMoisture.text = "${it.current.humidity}%"
+                binding.tvWindSpeed.text = "${it.current.windKph} km/h"
+                binding.tvPercentRain.text = "${it.current.cloud}%"
+            }
+        }
+
+        viewModel.error.observe(viewLifecycleOwner) { errorMessage ->
+            Toast.makeText(requireContext(), errorMessage, Toast.LENGTH_SHORT).show()
+            Log.e("CurrentWeatherFragment", errorMessage)
+        }
     }
 
     private fun checkLocationPermission() {
@@ -67,29 +107,11 @@ class CurrentWeatherFragment : Fragment() {
             fusedLocationProviderClient.lastLocation
                 .addOnSuccessListener { location: Location? ->
                     if (location != null) {
-                        val latitude = location.latitude
-                        val longitude = location.longitude
-                        viewModel.fetchWeather(latitude,longitude).enqueue(object : Callback<WeatherResponse> {
-                            override fun onResponse(call: Call<WeatherResponse>, response: Response<WeatherResponse>) {
-                                if (response.isSuccessful) {
-                                    val weatherResponse = response.body()
-                                    weatherResponse?.let {
-                                        binding.tvConditionWeather.text = it.current.condition.text
-                                        binding.tvLocation.text = it.location.name
-                                        binding.tvTemprature.text = "${it.current.feelslikeC}°"
-                                        binding.tvPercentMoisture.text = "${it.current.humidity}%"
-                                        binding.tvWindSpeed.text = "${it.current.windKph} km/h"
-                                        binding.tvPercentRain.text = "${it.current.cloud}%"
-                                    }
-                                } else {
-                                    Log.e("WeatherViewModel", "Error Response: ${response.message()}")
-                                }
-                            }
-
-                            override fun onFailure(call: Call<WeatherResponse>, t: Throwable) {
-                                Log.e("WeatherViewModel", "API Failure: ${t.message}")
-                            }
-                        })
+                        val latitude = location.latitude.toString()
+                        val longitude = location.longitude.toString()
+                        viewModel.fetchWeather(latitude, longitude)
+                        Toast.makeText(requireContext(), "$latitude, $longitude", Toast.LENGTH_SHORT).show()
+                        Log.d("CurrentWeatherFragment", "Location: $latitude, $longitude")
                     } else {
                         Toast.makeText(requireContext(), "Location not found", Toast.LENGTH_SHORT).show()
                         Log.d("CurrentWeatherFragment", "Location not found")
@@ -101,7 +123,6 @@ class CurrentWeatherFragment : Fragment() {
                 }
         }
     }
-
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -123,7 +144,17 @@ class CurrentWeatherFragment : Fragment() {
         _binding = null
     }
 
+    override fun onRefresh() {
+        Handler(Looper.getMainLooper()).postDelayed(
+            {
+                swipeRefreshLayout.isRefreshing = false
+            },3000
+        )
+    }
+
     companion object {
         private const val LOCATION_PERMISSION_REQUEST_CODE = 100
     }
+
+
 }
